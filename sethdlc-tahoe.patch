@@ -1,0 +1,364 @@
+--- sethdlc-1.15/sethdlc.c	2003-05-07 21:43:01.000000000 +0200
++++ sethdlc-1.16t/sethdlc.c	2003-12-09 17:22:20.000000000 +0100
+@@ -2,6 +2,7 @@
+  * sethdlc.c
+  *
+  * Copyright (C) 1999 - 2002 Krzysztof Halasa <khc@pm.waw.pl>
++ * Copyright (C) 2003 Piotr Kaczmarzyk <piotr@tahoe.pl>
+  *
+  * This program is free software; you can redistribute it and/or modify it
+  * under the terms of the GNU General Public License as published by
+@@ -27,11 +28,6 @@
+ #error Generic HDLC layer version mismatch, please get correct sethdlc.c
+ #endif
+ 
+-#if !defined(IF_PROTO_HDLC_ETH) || !defined(IF_PROTO_FR_ETH_PVC)
+-#warning "No kernel support for Ethernet over Frame Relay / HDLC, skipping it"
+-#endif
+-
+-
+ static struct ifreq req;	/* for ioctl */
+ static int argc;
+ static char **argv;
+@@ -183,26 +179,115 @@
+ 			  { "ccitt", LMI_CCITT },
+ 			  { NULL, 0 }};
+ 
++static int check_slot(char slot)
++{
++	if ((slot < 1) || (slot > 32)) {
++		printf("Slots have to be between 1 and 32\n");
++		return 1;
++	}
++	return 0;
++}
++
++static unsigned int get_slot_map()
++{
++	char	*cp, *c, *c2, slot, slot_end;
++	unsigned int slots;
++	
++	if (argc < 1) {
++		printf("Required parameter missing\n");
++		return 0;
++	}
++	
++	if (!strcmp("all", argv[0])) {
++		argc--;
++		argv++;
++		return 0xffffffff;
++	}
++
++	cp = c = argv[0];
++	slots = 0;
++	while (1) {
++		char	out;
++				
++		out = 0;
++		switch (*cp) {
++			case ',':
++			case 0:
++				if (*cp == 0) out = 1;	// Koniec linijki
++				*cp++ = 0;
++				slot = atoi(c);
++				if (check_slot(slot))
++					exit(1);
++				slots |= 1 << (slot - 1);
++				c = cp;
++				break;
++			case '-':
++				/* Zakres */
++				*cp++ = 0;
++				c2 = cp;
++				while (1) {
++					if ((*cp == ',') || (*cp == 0)) {
++						if (*cp == 0) out = 1;	// Koniec linijki
++						*cp++ = 0;
++						slot = atoi(c);
++						slot_end = atoi(c2);
++						if (check_slot(slot) || check_slot(slot_end))
++							exit(1);
++						if (slot_end < slot) {
++							printf("The ending slot should be higher than the starting one\n");
++							exit(1);
++						}
++						do {
++							slots |= 1 << (slot - 1);
++							slot++;
++						} while (slot <= slot_end);
++						c = cp;
++						break;
++					}
++					cp++;
++				}
++				break;
++			default:
++				cp++;
++		}
++		if (out) break;
++	}
++	argc--;
++	argv++;
++	if (slots & 1) {
++		printf("Slot 1 is reserved - use 'slots all' to enable unframed mode\n");
++		exit(1);
++	}
++	return slots;
++}
+ 
+ static void set_iface(void)
+ {
+ 	int orig_argc = argc;
+ 	te1_settings te1;
+ 
+-	memset(&te1, 0, sizeof(te1));
+-	req.ifr_settings.type = IF_IFACE_SYNC_SERIAL;
++	req.ifr_settings.ifs_ifsu.te1 = &te1;
++	req.ifr_settings.size = sizeof(te1);
++	req.ifr_settings.type = IF_GET_IFACE;
++
++	if (ioctl(sock, SIOCWANDEV, &req))
++		if (errno != EINVAL) {
++			printf("unable to get interface information: %s\n",
++			       strerror(errno));
++			close(sock);
++			exit(1);
++		}
+ 
+ 	while (argc > 0) {
+ 		if (req.ifr_settings.type == IF_IFACE_SYNC_SERIAL)
+ 			if (!checktab(ifaces, &req.ifr_settings.type))
+ 				continue;
+ 
+-		if (!te1.clock_type)
+-			if (!checkkey("clock")) {
+-				if (!checktab(clocks, &te1.clock_type))
+-					continue;
+-				error("Invalid clock type\n");
+-			}
++		if (!checkkey("clock")) {
++			if (!checktab(clocks, &te1.clock_type))
++				continue;
++			error("Invalid clock type\n");
++		}
+ 
+ 		if (!te1.clock_rate &&
+ 		    (te1.clock_type == CLOCK_INT ||
+@@ -210,13 +295,38 @@
+ 			if (!match("rate", &te1.clock_rate, 1, 0xFFFFFFFF))
+ 				continue;
+ 		if (!te1.loopback) {
+-			if (!checkkey("loopback") ||
+-			    !checkkey("lb")) {
++			if (!checkkey("lb")) {
+ 				te1.loopback = 1;
+ 				continue;
+ 			}
+ 		}
+ 		/* slotmap goes here */
++		if (!checkkey("slotmap")) {
++			te1.slot_map = get_slot_map();
++			if (!te1.slot_map) return;
++			continue;
++		}
++
++		if (!checkkey("short")) {
++			te1.egl = 0;
++			continue;
++		}
++
++		if (!checkkey("long")) {
++			te1.egl = 1;
++			continue;
++		}
++
++		if (!checkkey("crc4")) {
++			if (!checkkey("on")) {
++				te1.crc4 = 1;
++				continue;
++			}
++			if (!checkkey("off")) {
++				te1.crc4 = 0;
++				continue;
++			}
++		}
+ 
+ 		if (orig_argc == argc)
+ 			return;	/* not an iface definition */
+@@ -440,17 +550,8 @@
+ 	if (checktab(ops, &req.ifr_settings.type))
+ 		return;
+ 
+-#ifdef IF_PROTO_FR_ETH_PVC
+-	if (!match("ether", &pvc.dlci, 0, 1023)) {
+-		if (req.ifr_settings.type == IF_PROTO_FR_ADD_PVC)
+-			req.ifr_settings.type = IF_PROTO_FR_ADD_ETH_PVC;
+-		else
+-			req.ifr_settings.type = IF_PROTO_FR_DEL_ETH_PVC;
+-
+-	} else
+-#endif
+-		if (match(NULL, &pvc.dlci, 0, 1023))
+-			return;
++	if (match(NULL, &pvc.dlci, 0, 1023))
++		return;
+ 
+ 	if (argc != 0)
+ 		return;
+@@ -479,17 +580,69 @@
+ 	}
+ }
+ 
++static void display_slots(u_int slots, u_char *tmp, u_char *bin, u_char *n)
++{
++	u_char	tmp2[10], i, zakr = 255, zakr_begin = 0, comma = 0, slot;
+ 
++	if (slots == 0xffffffff) {
++		sprintf(tmp, "all");
++		sprintf(bin, "11111111111111111111111111111111");
++		*n = 32;
++		return;
++	}
++	tmp[0] = 0;
++	for (i=0; i<32; i++) {
++		slot = ((slots & (1 << i)) != 0);
++		if (slot) {
++			if (zakr == 255) {
++				zakr = i;
++				zakr_begin = i;
++				if (comma) strcat(tmp,",");
++				sprintf(tmp2, "%d", i+1);
++				strcat(tmp, tmp2);
++				comma = 1;
++			} else {
++				if (zakr != i-1) {
++					if (zakr == zakr_begin)
++						/* Zakres byl jednopozycyjny */
++						sprintf(tmp2, ",%d", i+1);
++					else
++						sprintf(tmp2, "-%d,%d", zakr+1, i+1);
++					strcat(tmp, tmp2);
++					zakr_begin = i;
++					comma = 1;
++				}
++				zakr = i;
++			}
++		}
++		if (i == 31) {	/* Ostatni slot */
++			if (zakr != 255) {
++				tmp2[0] = 0;
++				/* Dokoncz rozpoczety zakres */
++				if (slot && (zakr_begin != 31))
++					sprintf(tmp2, "-32");
++				else
++					if (zakr != zakr_begin)
++						sprintf(tmp2, "-%d", zakr+1);
++				strcat(tmp, tmp2);
++			}
++		}
++		if (n) (*n) += slot;
++		if (bin) bin[i] = '0' + slot;
++		if (bin) bin[0] = 's';	// Slot 1 - synchronizacja
++		if (bin) bin[32] = 0;
++	}
++}
+ 
+ static void show_port(void)
+ {
+ 	const char *s;
+-	char buffer[128];
++	char buffer[128], tmp[128], bin[128];
++	u_char	n;
+ 	const te1_settings *te1 = (void*)buffer;
+ 	const raw_hdlc_proto *raw = (void*)buffer;
+ 	const cisco_proto *cisco = (void*)buffer;
+ 	const fr_proto *fr = (void*)buffer;
+-	const fr_proto_pvc_info *pvc = (void*)buffer;
+ 
+ 	req.ifr_settings.ifs_ifsu.sync = (void*)buffer; /* FIXME */
+ 
+@@ -513,28 +666,28 @@
+ 		s = tabstr(req.ifr_settings.type, ifaces, NULL);
+ 
+ 	if (!s)
+-		printf("unknown interface 0x%x\n", req.ifr_settings.type);
++		printf("\n\tunknown interface 0x%x\n", req.ifr_settings.type);
+ 	else {
+ 		if (*s)
+-			printf("interface %s ", s);
++			printf("\n\tinterface %s\n", s);
+ 
+-		printf("clock %s", tabstr(te1->clock_type, clocks,
++		printf("\tclock %s\n", tabstr(te1->clock_type, clocks,
+ 					  "type unknown"));
+ 		if (te1->clock_type == CLOCK_INT ||
+ 		    te1->clock_type == CLOCK_TXINT)
+-			printf(" rate %u", te1->clock_rate);
++			printf("\trate %u\n", te1->clock_rate);
+ 
+ 		if (te1->loopback)
+-			printf(" loopback");
++			printf("\tloopback\n");
+ 
+ 		if (req.ifr_settings.type == IF_IFACE_E1 ||
+ 		    req.ifr_settings.type == IF_IFACE_T1) {
+-			unsigned int u;
+-			printf(" slotmap ");
+-			for (u = te1->slot_map; u != 0; u /= 2)
+-				printf("%u", u % 2);
++			printf("\tslotmap ");
++			n = 0;
++			display_slots(te1->slot_map, tmp, bin, &n);
++			printf("%s (%s, %d kb/s)\n", tmp, bin, n*64);
++			printf("\tcrc4 %s\n\t%s\n", te1->crc4 ? "on" : "off", te1->egl ? "long" : "short");
+ 		}
+-		printf("\n");
+ 	}
+ 
+ 	/* Get and print protocol settings */
+@@ -570,18 +723,6 @@
+ 				putchar('\n');
+ 			break;
+ 
+-		case IF_PROTO_FR_PVC:
+-			printf("Frame-Relay PVC: DLCI %u, master device %s\n",
+-			       pvc->dlci, pvc->master);
+-			break;
+-
+-#ifdef IF_PROTO_FR_ETH_PVC
+-		case IF_PROTO_FR_ETH_PVC:
+-			printf("Frame-Relay PVC (Ethernet emulation): DLCI %u,"
+-			       " master device %s\n", pvc->dlci, pvc->master);
+-			break;
+-#endif
+-
+ 		case IF_PROTO_HDLC:
+ 			printf("protocol hdlc %s %s\n",
+ 			       tabstr(raw->encoding, hdlc_enc, "unknown"),
+@@ -623,22 +764,20 @@
+ 
+ static void usage(void)
+ {
+-	fprintf(stderr, "sethdlc version 1.15\n"
++	fprintf(stderr, "sethdlc version 1.16t\n"
+ 		"Copyright (C) 2000 - 2003 Krzysztof Halasa <khc@pm.waw.pl>\n"
++		"Copyright (C) 2003 Piotr Kaczmarzyk <piotr@tahoe.pl>\n"
+ 		"\n"
+ 		"Usage: sethdlc INTERFACE [PHYSICAL] [clock CLOCK] [LOOPBACK] "
+-		"[slotmap SLOTMAP]\n"
++		"[slotmap SLOTMAP] [crc4 on | off] [short | long]\n"
+ 		"       sethdlc INTERFACE [PROTOCOL]\n"
+ 		"       sethdlc INTERFACE create | delete"
+-#ifdef IF_PROTO_FR_ETH_PVC
+-		" [ether]"
+-#endif
+ 		" DLCI\n"
+ 		"       sethdlc INTERFACE private...\n"
+ 		"\n"
+ 		"PHYSICAL := v24 | v35 | x21 | e1 | t1\n"
+ 		"CLOCK := int [rate RATE] | ext | txint [rate RATE] | txfromrx\n"
+-		"LOOPBACK := loopback | lb\n"
++		"LOOPBACK := locallb | framerlb | remotelb \n"
+ 		"\n"
+ 		"PROTOCOL := hdlc [ENCODING] [PARITY] |\n"
+ #ifdef IF_PROTO_HDLC_ETH
