@@ -1,0 +1,58 @@
+#!/bin/sh
+# sethdlc
+#
+# chkconfig:	345 09 91
+# description:	Frame Relay sethdlc
+
+# Source function library
+. /etc/rc.d/init.d/functions
+
+# Get network config
+. /etc/sysconfig/network
+
+# sethdlc
+sethdlc=/usr/sbin/sethdlc
+
+RETVAL=0
+# See how we were called.
+case "$1" in
+  start)
+	# Check if the service is already running?
+	if [ ! -f /var/lock/subsys/sethdlc ]; then
+		msg_starting "TPNET Frame Relay"
+		$sethdlc hdlc0 fr lmi ansi
+		$sethdlc hdlc0 create 99
+		/sbin/ip l s dev hdlc0 up
+		RETVAL=$?
+		[ $RETVAL -eq 0 ] && touch /var/lock/subsys/sethdlc
+	else
+		msg_already_running "TPNET Frame Relay"
+	fi
+	;;
+  stop)
+	# Check if the service is already running?
+	if [ -f /var/lock/subsys/sethdlc ]; then
+		msg_stopping "TPNET Frame Relay"
+		/sbin/ip l s dev hdlc0 down
+		$sethdlc hdlc0 delete 99
+		rm -f /var/lock/subsys/sethdlc >/dev/null 2>&1
+	else
+		msg_not_running "TPNET Frame Relay"
+	fi
+	;;
+  restart|force-reload)
+	$0 stop
+	$0 start
+	exit $?
+	;;
+  status)
+	#status 
+	exit $?
+	;;
+  *)
+	msg_usage "$0 {start|stop|restart|force-reload|status}"
+	exit 3
+esac
+
+exit $RETVAL
+
