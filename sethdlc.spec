@@ -35,7 +35,10 @@ Narzêdzie do konfiguracji kart synchronicznych.
 echo %{version}
 %{__make} \
 	CC="%{__cc}" \
-	CFLAGS="%{rpmcflags}"
+	CFLAGS="%{rpmcflags}"\
+%if !%{with tahoe}
+	INCLUDES=""
+%endif
 
 %install
 rm -rf $RPM_BUILD_ROOT
