@@ -1,26 +1,34 @@
 # TODO:
-# - Summary, desc, cleanups, check with kernel-headers with tahoe patch,
+# - Summary, desc, cleanups, 
+# - with bcond tahoe check with kernel-headers with tahoe patch,
 # - check this one vs khc's generic sethdlc - is it Tahoe-specific?
-Summary:	Tool for Tahoe synchronous cards
-Summary(pl):	Narzêdzie do konfiguracji kart synchronicznych Tahoe
+
+# Conditional build
+%bcond_with     tahoe	# - build sethdlc for tahoe
+Summary:	Tool for synchronous cards
+Summary(pl):	Narzêdzie do konfiguracji kart synchronicznych
 Name:		sethdlc
-Version:	1.16t
+Version:	1.15
 Release:	0.1
 License:	GPL
 Group:		Networking/Utilities
-Source0:	http://www.tahoe.pl/hdlc/%{name}-1.16t.tar.gz
-# Source0-md5:	82fe859700e928c22c531a9467fb405b
-URL:		http://www.tahoe.pl/
+Source0:	http://hq.pm.waw.pl/hdlc/%{name}-%{version}.tar.gz
+# Source0-md5:	3bc714ee98e6215e8560598ff1e1eb8f
+Patch0:		%{name}-tahoe.patch
+URL:		http://hq.pm.waw.pl/hdlc/
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 %description
-Tool for Tahoe synchronous cards.
+Tool for synchronous cards.
 
 %description -l pl
-Narzêdzie do konfiguracji kart synchronicznych Tahoe.
+Narzêdzie do konfiguracji kart synchronicznych.
 
 %prep
 %setup -q
+%if %{with tahoe}
+%patch -p1
+%endif
 
 %build
 %{__make} \
