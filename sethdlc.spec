@@ -72,5 +72,5 @@ fi
 %defattr(644,root,root,755)
 %attr(755,root,root) %{_sbindir}/sethdlc
 %if %{with tahoe}
-%attr(755,root,root) /etc/rc.d/init.d/sethdlc
+%attr(754,root,root) /etc/rc.d/init.d/sethdlc
 %endif
