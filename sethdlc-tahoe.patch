@@ -362,3 +362,15 @@
  		"\n"
  		"PROTOCOL := hdlc [ENCODING] [PARITY] |\n"
  #ifdef IF_PROTO_HDLC_ETH
+--- sethdlc-1.15/sethdlc.c~     2005-01-10 08:38:50.118750408 +0100
++++ sethdlc-1.15/sethdlc.c      2005-01-10 08:34:18.564033000 +0100
+@@ -17,6 +17,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <asm/types.h>
++#include <asm-generic/errno.h>
+ #include <linux/hdlc.h>
+ #include <netinet/in.h>
+ #include <sys/ioctl.h>
+
+
