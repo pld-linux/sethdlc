@@ -10,7 +10,7 @@ Summary:	Tool for synchronous cards
 Summary(pl):	Narzêdzie do konfiguracji kart synchronicznych
 Name:		sethdlc
 Version:	1.1%{?_with_tahoe:6t}%{!?_with_tahoe:5}
-Release:	1
+Release:	1.1
 License:	GPL
 Group:		Networking/Utilities
 Source0:	http://hq.pm.waw.pl/hdlc/%{name}-%{_ver}.tar.gz
@@ -40,13 +40,13 @@ echo %{version}
 
 %install
 rm -rf $RPM_BUILD_ROOT
-install -d $RPM_BUILD_ROOT%{_bindir}
+install -d $RPM_BUILD_ROOT%{_sbindir}
 
-install sethdlc $RPM_BUILD_ROOT%{_bindir}
+install sethdlc $RPM_BUILD_ROOT%{_sbindir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(644,root,root,755)
-%attr(755,root,root) %{_bindir}/sethdlc
+%attr(755,root,root) %{_sbindir}/sethdlc
