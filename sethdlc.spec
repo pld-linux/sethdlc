@@ -1,7 +1,8 @@
 # TODO:
 # - Summary, desc, cleanups, check with kernel-headers with tahoe patch,
-
-Summary:	Tool for Tahoe synchronus cards	
+# - check this one vs khc's generic sethdlc - is it Tahoe-specific?
+Summary:	Tool for Tahoe synchronous cards
+Summary(pl):	Narzêdzie do konfiguracji kart synchronicznych Tahoe
 Name:		sethdlc
 Version:	1.16t
 Release:	0.1
@@ -13,7 +14,10 @@ URL:		http://www.tahoe.pl/
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 %description
-Tool for Tahoe synchronus cards
+Tool for Tahoe synchronous cards.
+
+%description -l pl
+Narzêdzie do konfiguracji kart synchronicznych Tahoe.
 
 %prep
 %setup -q
@@ -27,7 +31,7 @@ Tool for Tahoe synchronus cards
 rm -rf $RPM_BUILD_ROOT
 install -d $RPM_BUILD_ROOT%{_bindir}
 
-install sethdlc		$RPM_BUILD_ROOT%{_bindir}
+install sethdlc $RPM_BUILD_ROOT%{_bindir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
