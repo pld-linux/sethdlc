@@ -1,10 +1,5 @@
-# TODO:
-# - Summary, desc, cleanups, 
-# - with bcond tahoe check with kernel-headers with tahoe patch,
-# - check this one vs khc's generic sethdlc - is it Tahoe-specific?
-
 # Conditional build
-%bcond_with     tahoe	# - build sethdlc for tahoe
+%bcond_with     tahoe	# - build sethdlc for tahoe (special version)
 %define		_ver	1.15
 Summary:	Tool for synchronous cards
 Summary(pl):	Narzêdzie do konfiguracji kart synchronicznych
