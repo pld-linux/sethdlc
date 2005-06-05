@@ -10,11 +10,11 @@ Version:	1.1%{?with_tahoe:6t}%{!?with_tahoe:5}
 Release:	3
 License:	GPL
 Group:		Networking/Utilities
-Source0:	http://hq.pm.waw.pl/hdlc/%{name}-%{_ver}.tar.gz
+Source0:	http://www.kernel.org/pub/linux/utils/net/hdlc/%{name}-%{_ver}.tar.gz
 # Source0-md5:	3bc714ee98e6215e8560598ff1e1eb8f
 Source1:	%{name}.init
 Patch0:		%{name}-tahoe.patch
-URL:		http://hq.pm.waw.pl/hdlc/
+URL:		http://www.kernel.org/pub/linux/utils/net/hdlc/
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 %description
