@@ -1,6 +1,6 @@
 #
 # Conditional build:
-%bcond_with     tahoe	# - build sethdlc for tahoe (special version)
+%bcond_with	tahoe	# - build sethdlc for tahoe (special version)
 #
 %define		_ver	1.15
 Summary:	Tool for synchronous cards
