@@ -7,9 +7,6 @@
 # Source function library
 . /etc/rc.d/init.d/functions
 
-# Get network config
-. /etc/sysconfig/network
-
 # sethdlc
 sethdlc=/usr/sbin/sethdlc
 
