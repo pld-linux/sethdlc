@@ -43,7 +43,7 @@ case "$1" in
 	exit $?
 	;;
   status)
-	#status 
+	#status
 	exit $?
 	;;
   *)
