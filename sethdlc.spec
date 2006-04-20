@@ -15,6 +15,11 @@ Source0:	http://www.kernel.org/pub/linux/utils/net/hdlc/%{name}-%{_ver}.tar.gz
 Source1:	%{name}.init
 Patch0:		%{name}-tahoe.patch
 URL:		http://www.kernel.org/pub/linux/utils/net/hdlc/
+BuildRequires:	rpmbuild(macros) >= 1.268
+%if %{with tahoe}
+Requires(post,preun):	/sbin/chkconfig
+Requires:	rc-scripts
+%endif
 BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 %description
@@ -34,7 +39,7 @@ echo %{version}
 %{__make} \
 	CC="%{__cc}" \
 	CFLAGS="%{rpmcflags}"\
-%if !%{with tahoe}
+%if %{without tahoe}
 	INCLUDES=""
 %endif
 
@@ -53,18 +58,12 @@ rm -rf $RPM_BUILD_ROOT
 %if %{with tahoe}
 %post
 /sbin/chkconfig --add sethdlc
-if [ -r /var/lock/subsys/sethdlc ]; then
-        /etc/rc.d/init.d/sethdlc restart >&2
-else
-        echo "Run \"/etc/rc.d/init.d/sethdlc start\" to start TPNET Frame Relay."
-fi
+%service sethdlc restart "TPNET Frame Relay"
 
 %preun
 if [ "$1" = "0" ]; then
-        if [ -r /var/lock/subsys/sethdlc ]; then
-                /etc/rc.d/init.d/sethdlc stop >&2
-        fi
-        /sbin/chkconfig --del sethdlc
+	%service sethdlc stop
+	/sbin/chkconfig --del sethdlc
 fi
 %endif
 
