@@ -31,7 +31,7 @@ Narzêdzie do konfiguracji kart synchronicznych.
 %prep
 %setup -q -n %{name}-%{_ver}
 %if %{with tahoe}
-%patch -p1
+%patch0 -p1
 %endif
 
 %build
