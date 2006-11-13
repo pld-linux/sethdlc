@@ -39,7 +39,7 @@ echo %{version}
 %{__make} \
 	CC="%{__cc}" \
 	CFLAGS="%{rpmcflags}"\
-%if %{without tahoe}
+%if !%{with tahoe}
 	INCLUDES=""
 %endif
 
