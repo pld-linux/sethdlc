@@ -4,7 +4,7 @@
 #
 %define		_ver	1.15
 Summary:	Tool for synchronous cards
-Summary(pl.UTF-8):   Narzędzie do konfiguracji kart synchronicznych
+Summary(pl.UTF-8):	Narzędzie do konfiguracji kart synchronicznych
 Name:		sethdlc
 Version:	1.1%{?with_tahoe:6t}%{!?with_tahoe:5}
 Release:	3
