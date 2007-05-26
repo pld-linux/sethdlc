@@ -1,36 +1,22 @@
---- sethdlc-1.15/sethdlc.c	2003-05-07 21:43:01.000000000 +0200
-+++ sethdlc-1.16t/sethdlc.c	2003-12-09 17:22:20.000000000 +0100
+--- sethdlc-1.18/sethdlc.c.orig	2005-03-31 20:06:07.000000000 +0200
++++ sethdlc-1.18/sethdlc.c	2007-05-27 00:20:52.332205070 +0200
 @@ -2,6 +2,7 @@
   * sethdlc.c
   *
-  * Copyright (C) 1999 - 2002 Krzysztof Halasa <khc@pm.waw.pl>
-+ * Copyright (C) 2003 Piotr Kaczmarzyk <piotr@tahoe.pl>
+  * Copyright (C) 1999 - 2004 Krzysztof Halasa <khc@pm.waw.pl>
++ * Tahoe support based on patch by Piotr Kaczmarczyk <piotr@tahoe.pl>, 2003.
   *
   * This program is free software; you can redistribute it and/or modify it
   * under the terms of the GNU General Public License as published by
-@@ -27,11 +28,6 @@
- #error Generic HDLC layer version mismatch, please get correct sethdlc.c
- #endif
+@@ -137,6 +138,81 @@
+ 	return 0;
+ }
  
--#if !defined(IF_PROTO_HDLC_ETH) || !defined(IF_PROTO_FR_ETH_PVC)
--#warning "No kernel support for Ethernet over Frame Relay / HDLC, skipping it"
--#endif
--
--
- static struct ifreq req;	/* for ioctl */
- static int argc;
- static char **argv;
-@@ -183,26 +179,115 @@
- 			  { "ccitt", LMI_CCITT },
- 			  { NULL, 0 }};
- 
-+static int check_slot(char slot)
++static void check_slot(char slot)
 +{
 +	if ((slot < 1) || (slot > 32)) {
-+		printf("Slots have to be between 1 and 32\n");
-+		return 1;
++		error("Slots have to be between 1 and 32\n");
 +	}
-+	return 0;
 +}
 +
 +static unsigned int get_slot_map()
@@ -39,8 +25,7 @@
 +	unsigned int slots;
 +	
 +	if (argc < 1) {
-+		printf("Required parameter missing\n");
-+		return 0;
++		error("Required parameter missing\n");
 +	}
 +	
 +	if (!strcmp("all", argv[0])) {
@@ -58,29 +43,27 @@
 +		switch (*cp) {
 +			case ',':
 +			case 0:
-+				if (*cp == 0) out = 1;	// Koniec linijki
++				if (*cp == 0) out = 1;	// eol
 +				*cp++ = 0;
 +				slot = atoi(c);
-+				if (check_slot(slot))
-+					exit(1);
++				check_slot(slot);
 +				slots |= 1 << (slot - 1);
 +				c = cp;
 +				break;
 +			case '-':
-+				/* Zakres */
++				/* range */
 +				*cp++ = 0;
 +				c2 = cp;
 +				while (1) {
 +					if ((*cp == ',') || (*cp == 0)) {
-+						if (*cp == 0) out = 1;	// Koniec linijki
++						if (*cp == 0) out = 1;	// eol
 +						*cp++ = 0;
 +						slot = atoi(c);
 +						slot_end = atoi(c2);
-+						if (check_slot(slot) || check_slot(slot_end))
-+							exit(1);
++						check_slot(slot);
++						check_slot(slot_end);
 +						if (slot_end < slot) {
-+							printf("The ending slot should be higher than the starting one\n");
-+							exit(1);
++							error("The ending slot should be higher than the starting one\n");
 +						}
 +						do {
 +							slots |= 1 << (slot - 1);
@@ -100,57 +83,75 @@
 +	argc--;
 +	argv++;
 +	if (slots & 1) {
-+		printf("Slot 1 is reserved - use 'slots all' to enable unframed mode\n");
-+		exit(1);
++		error("Slot 1 is reserved - use 'slotmap all' to enable unframed mode\n");
 +	}
 +	return slots;
 +}
  
+ static parsertab ifaces[] = {{ "v35", IF_IFACE_V35 },
+ 			     { "v24", IF_IFACE_V24 },
+@@ -186,40 +262,94 @@
+ 			  { "ccitt", LMI_CCITT },
+ 			  { NULL, 0 }};
+ 
++typedef struct {
++	unsigned int clock_rate; /* bits per second */
++	unsigned int clock_type; /* internal, external, TX-internal etc. */
++	unsigned short loopback;
++	unsigned int slot_map;
++	unsigned short crc4;
++	unsigned short egl;
++} tahoe_settings; /* superset of t1_settings, with tahoe-specific fields added */
+ 
  static void set_iface(void)
  {
  	int orig_argc = argc;
- 	te1_settings te1;
+-	te1_settings te1;
++	int type_set = 0, clock_type_set = 0, clock_rate_set = 0, loopback_set = 0, tahoe = 0;
++	tahoe_settings te1;
  
--	memset(&te1, 0, sizeof(te1));
+ 	memset(&te1, 0, sizeof(te1));
 -	req.ifr_settings.type = IF_IFACE_SYNC_SERIAL;
-+	req.ifr_settings.ifs_ifsu.te1 = &te1;
-+	req.ifr_settings.size = sizeof(te1);
 +	req.ifr_settings.type = IF_GET_IFACE;
-+
-+	if (ioctl(sock, SIOCWANDEV, &req))
-+		if (errno != EINVAL) {
-+			printf("unable to get interface information: %s\n",
-+			       strerror(errno));
-+			close(sock);
-+			exit(1);
-+		}
++	req.ifr_settings.ifs_ifsu.te1 = &te1;
++	req.ifr_settings.size = sizeof(tahoe_settings);
++	if (ioctl(sock, SIOCWANDEV, &req)) {
++		if (errno != EINVAL)
++			error("Unable to get interface information: %s\n", strerror(errno));
++	}
  
  	while (argc > 0) {
- 		if (req.ifr_settings.type == IF_IFACE_SYNC_SERIAL)
- 			if (!checktab(ifaces, &req.ifr_settings.type))
+-		if (req.ifr_settings.type == IF_IFACE_SYNC_SERIAL)
+-			if (!checktab(ifaces, &req.ifr_settings.type))
++		if (!type_set)
++			if (!checktab(ifaces, &req.ifr_settings.type)) {
++				type_set = 1;
  				continue;
++			}
  
 -		if (!te1.clock_type)
--			if (!checkkey("clock")) {
--				if (!checktab(clocks, &te1.clock_type))
--					continue;
--				error("Invalid clock type\n");
--			}
-+		if (!checkkey("clock")) {
-+			if (!checktab(clocks, &te1.clock_type))
-+				continue;
-+			error("Invalid clock type\n");
-+		}
++		if (!clock_type_set)
+ 			if (!checkkey("clock")) {
++				clock_type_set = 1;
+ 				if (!checktab(clocks, &te1.clock_type))
+ 					continue;
+ 				error("Invalid clock type\n");
+ 			}
  
- 		if (!te1.clock_rate &&
+-		if (!te1.clock_rate &&
++		if (!clock_rate_set &&
  		    (te1.clock_type == CLOCK_INT ||
-@@ -210,13 +295,38 @@
- 			if (!match("rate", &te1.clock_rate, 1, 0xFFFFFFFF))
+ 		     te1.clock_type == CLOCK_TXINT))
+-			if (!match("rate", &te1.clock_rate, 1, 0xFFFFFFFF))
++			if (!match("rate", &te1.clock_rate, 1, 0xFFFFFFFF)) {
++				clock_rate_set = 1;
  				continue;
- 		if (!te1.loopback) {
--			if (!checkkey("loopback") ||
--			    !checkkey("lb")) {
-+			if (!checkkey("lb")) {
+-		if (!te1.loopback) {
++			}
++		if (!loopback_set) {
+ 			if (!checkkey("loopback") ||
+ 			    !checkkey("lb")) {
++				loopback_set = 1;
  				te1.loopback = 1;
  				continue;
  			}
@@ -163,56 +164,54 @@
 +		}
 +
 +		if (!checkkey("short")) {
++			tahoe = 1;
 +			te1.egl = 0;
 +			continue;
 +		}
 +
 +		if (!checkkey("long")) {
++			tahoe = 1;
 +			te1.egl = 1;
 +			continue;
 +		}
 +
 +		if (!checkkey("crc4")) {
 +			if (!checkkey("on")) {
++				tahoe = 1;
 +				te1.crc4 = 1;
 +				continue;
 +			}
 +			if (!checkkey("off")) {
++				tahoe = 1;
 +				te1.crc4 = 0;
 +				continue;
 +			}
 +		}
++ 
++		if(!checkkey("tahoe"))
++			tahoe = 1; /* just use bigger struct with default values */
  
  		if (orig_argc == argc)
  			return;	/* not an iface definition */
-@@ -440,17 +550,8 @@
- 	if (checktab(ops, &req.ifr_settings.type))
- 		return;
+@@ -233,6 +363,9 @@
  
--#ifdef IF_PROTO_FR_ETH_PVC
--	if (!match("ether", &pvc.dlci, 0, 1023)) {
--		if (req.ifr_settings.type == IF_PROTO_FR_ADD_PVC)
--			req.ifr_settings.type = IF_PROTO_FR_ADD_ETH_PVC;
--		else
--			req.ifr_settings.type = IF_PROTO_FR_DEL_ETH_PVC;
--
--	} else
--#endif
--		if (match(NULL, &pvc.dlci, 0, 1023))
--			return;
-+	if (match(NULL, &pvc.dlci, 0, 1023))
-+		return;
+ 	/* FIXME stupid hack, will remove it later */
+ 	req.ifr_settings.ifs_ifsu.te1 = &te1;
++	if (tahoe) {
++		req.ifr_settings.size = sizeof(tahoe_settings);
++	} else
+ 	if (req.ifr_settings.type == IF_IFACE_E1 ||
+ 	    req.ifr_settings.type == IF_IFACE_T1)
+ 		req.ifr_settings.size = sizeof(te1_settings);
+@@ -484,11 +617,66 @@
  
- 	if (argc != 0)
- 		return;
-@@ -479,17 +580,69 @@
- 	}
- }
  
-+static void display_slots(u_int slots, u_char *tmp, u_char *bin, u_char *n)
+ 
++static void display_slots(unsigned int slots, char *tmp, char *bin, unsigned char *n)
 +{
-+	u_char	tmp2[10], i, zakr = 255, zakr_begin = 0, comma = 0, slot;
- 
++	char tmp2[10];
++	unsigned char	i, zakr = 255, zakr_begin = 0, comma = 0, slot;
++
 +	if (slots == 0xffffffff) {
 +		sprintf(tmp, "all");
 +		sprintf(bin, "11111111111111111111111111111111");
@@ -233,7 +232,7 @@
 +			} else {
 +				if (zakr != i-1) {
 +					if (zakr == zakr_begin)
-+						/* Zakres byl jednopozycyjny */
++						/* one-element range */
 +						sprintf(tmp2, ",%d", i+1);
 +					else
 +						sprintf(tmp2, "-%d,%d", zakr+1, i+1);
@@ -244,10 +243,10 @@
 +				zakr = i;
 +			}
 +		}
-+		if (i == 31) {	/* Ostatni slot */
++		if (i == 31) {	/* the last slot */
 +			if (zakr != 255) {
 +				tmp2[0] = 0;
-+				/* Dokoncz rozpoczety zakres */
++				/* end started range */
 +				if (slot && (zakr_begin != 31))
 +					sprintf(tmp2, "-32");
 +				else
@@ -258,119 +257,46 @@
 +		}
 +		if (n) (*n) += slot;
 +		if (bin) bin[i] = '0' + slot;
-+		if (bin) bin[0] = 's';	// Slot 1 - synchronizacja
++		if (bin) bin[0] = 's';	// Slot 1 - sync
 +		if (bin) bin[32] = 0;
 +	}
 +}
- 
++ 
  static void show_port(void)
  {
  	const char *s;
--	char buffer[128];
-+	char buffer[128], tmp[128], bin[128];
-+	u_char	n;
- 	const te1_settings *te1 = (void*)buffer;
+ 	char buffer[128];
+-	const te1_settings *te1 = (void*)buffer;
++	const tahoe_settings *te1 = (void*)buffer;
  	const raw_hdlc_proto *raw = (void*)buffer;
  	const cisco_proto *cisco = (void*)buffer;
  	const fr_proto *fr = (void*)buffer;
--	const fr_proto_pvc_info *pvc = (void*)buffer;
- 
- 	req.ifr_settings.ifs_ifsu.sync = (void*)buffer; /* FIXME */
- 
-@@ -513,28 +666,28 @@
- 		s = tabstr(req.ifr_settings.type, ifaces, NULL);
- 
- 	if (!s)
--		printf("unknown interface 0x%x\n", req.ifr_settings.type);
-+		printf("\n\tunknown interface 0x%x\n", req.ifr_settings.type);
- 	else {
- 		if (*s)
--			printf("interface %s ", s);
-+			printf("\n\tinterface %s\n", s);
- 
--		printf("clock %s", tabstr(te1->clock_type, clocks,
-+		printf("\tclock %s\n", tabstr(te1->clock_type, clocks,
- 					  "type unknown"));
- 		if (te1->clock_type == CLOCK_INT ||
- 		    te1->clock_type == CLOCK_TXINT)
--			printf(" rate %u", te1->clock_rate);
-+			printf("\trate %u\n", te1->clock_rate);
- 
- 		if (te1->loopback)
--			printf(" loopback");
-+			printf("\tloopback\n");
+@@ -538,12 +726,15 @@
  
  		if (req.ifr_settings.type == IF_IFACE_E1 ||
  		    req.ifr_settings.type == IF_IFACE_T1) {
 -			unsigned int u;
--			printf(" slotmap ");
++			unsigned char n;
++			char tmp[128], bin[128];
+ 			printf(" slotmap ");
 -			for (u = te1->slot_map; u != 0; u /= 2)
 -				printf("%u", u % 2);
-+			printf("\tslotmap ");
 +			n = 0;
 +			display_slots(te1->slot_map, tmp, bin, &n);
 +			printf("%s (%s, %d kb/s)\n", tmp, bin, n*64);
-+			printf("\tcrc4 %s\n\t%s\n", te1->crc4 ? "on" : "off", te1->egl ? "long" : "short");
++			printf("crc4 %s\n", te1->crc4 ? "on" : "off");
++			printf("egl %s\n", te1->egl ? "long" : "short");
  		}
 -		printf("\n");
- 	}
+ 	} while(0);
  
  	/* Get and print protocol settings */
-@@ -570,18 +723,6 @@
- 				putchar('\n');
- 			break;
- 
--		case IF_PROTO_FR_PVC:
--			printf("Frame-Relay PVC: DLCI %u, master device %s\n",
--			       pvc->dlci, pvc->master);
--			break;
--
--#ifdef IF_PROTO_FR_ETH_PVC
--		case IF_PROTO_FR_ETH_PVC:
--			printf("Frame-Relay PVC (Ethernet emulation): DLCI %u,"
--			       " master device %s\n", pvc->dlci, pvc->master);
--			break;
--#endif
--
- 		case IF_PROTO_HDLC:
- 			printf("protocol hdlc %s %s\n",
- 			       tabstr(raw->encoding, hdlc_enc, "unknown"),
-@@ -623,22 +764,20 @@
- 
- static void usage(void)
- {
--	fprintf(stderr, "sethdlc version 1.15\n"
-+	fprintf(stderr, "sethdlc version 1.16t\n"
- 		"Copyright (C) 2000 - 2003 Krzysztof Halasa <khc@pm.waw.pl>\n"
-+		"Copyright (C) 2003 Piotr Kaczmarzyk <piotr@tahoe.pl>\n"
+@@ -639,7 +830,7 @@
+ 		"Copyright (C) 2000 - 2005 Krzysztof Halasa <khc@pm.waw.pl>\n"
  		"\n"
  		"Usage: sethdlc INTERFACE [PHYSICAL] [clock CLOCK] [LOOPBACK] "
 -		"[slotmap SLOTMAP]\n"
-+		"[slotmap SLOTMAP] [crc4 on | off] [short | long]\n"
++		"[slotmap SLOTMAP] [tahoe] [crc4 on | off] [short | long]\n"
  		"       sethdlc INTERFACE [PROTOCOL]\n"
  		"       sethdlc INTERFACE create | delete"
--#ifdef IF_PROTO_FR_ETH_PVC
--		" [ether]"
--#endif
- 		" DLCI\n"
- 		"       sethdlc INTERFACE private...\n"
- 		"\n"
- 		"PHYSICAL := v24 | v35 | x21 | e1 | t1\n"
- 		"CLOCK := int [rate RATE] | ext | txint [rate RATE] | txfromrx\n"
--		"LOOPBACK := loopback | lb\n"
-+		"LOOPBACK := locallb | framerlb | remotelb \n"
- 		"\n"
- 		"PROTOCOL := hdlc [ENCODING] [PARITY] |\n"
- #ifdef IF_PROTO_HDLC_ETH
---- sethdlc-1.15/sethdlc.c~     2005-01-10 08:38:50.118750408 +0100
-+++ sethdlc-1.15/sethdlc.c      2005-01-10 08:34:18.564033000 +0100
-@@ -17,6 +17,7 @@
- #include <string.h>
- #include <unistd.h>
- #include <asm/types.h>
-+#include <asm-generic/errno.h>
- #include <linux/hdlc.h>
- #include <netinet/in.h>
- #include <sys/ioctl.h>
-
-
+ #ifdef IF_PROTO_FR_ETH_PVC
